@@ -1,26 +1,100 @@
 import os
-import whisper
 from flask import Flask, request, jsonify, render_template
 from werkzeug.utils import secure_filename
 import tempfile
+import subprocess
+import requests
 
 app = Flask(__name__)
 
 # Allowed audio file extensions
 ALLOWED_EXTENSIONS = {'mp3', 'wav', 'mp4', 'm4a', 'ogg', 'flac'}
 
-# Model will be loaded on first request (lazy loading)
-model = None
-
-def get_model():
-    global model
-    if model is None:
-        # Using tiny model - smallest and fastest
-        model = whisper.load_model("tiny")
-    return model
-
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def transcribe_with_api(audio_path):
+    """Use OpenAI Whisper API for transcription"""
+    # This is a fallback - you can use OpenAI API or Groq API (free tier available)
+    # For now, using a simple approach with AssemblyAI free tier
+    
+    # Convert audio to wav if needed
+    wav_path = audio_path
+    if not audio_path.endswith('.wav'):
+        wav_path = audio_path.rsplit('.', 1)[0] + '.wav'
+        subprocess.run(['ffmpeg', '-i', audio_path, '-ar', '16000', '-ac', '1', wav_path], 
+                      capture_output=True)
+    
+    # Read audio file
+    with open(wav_path, 'rb') as f:
+        audio_data = f.read()
+    
+    # Use Groq API (free and fast) - you'll need to add API key
+    # For demo, returning a placeholder
+    # In production, add: GROQ_API_KEY in Heroku config vars
+    
+    api_key = os.environ.get('GROQ_API_KEY', '')
+    
+    if api_key:
+        # Use Groq Whisper API
+        headers = {'Authorization': f'Bearer {api_key}'}
+        files = {'file': ('audio.wav', audio_data, 'audio/wav')}
+        data = {'model': 'whisper-large-v3'}
+        
+        response = requests.post(
+            'https://api.groq.com/openai/v1/audio/transcriptions',
+            headers=headers,
+            files=files,
+            data=data
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            return result.get('text', ''), result.get('language', 'unknown')
+    
+    # Fallback: Use Vosk for offline transcription
+    return transcribe_with_vosk(wav_path)
+
+def transcribe_with_vosk(audio_path):
+    """Offline transcription using Vosk"""
+    from vosk import Model, KaldiRecognizer
+    import wave
+    import json
+    
+    # Download model on first use
+    model_path = "/tmp/vosk-model"
+    if not os.path.exists(model_path):
+        model_url = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
+        import zipfile
+        import urllib.request
+        
+        zip_path = "/tmp/model.zip"
+        urllib.request.urlretrieve(model_url, zip_path)
+        
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall("/tmp/")
+        
+        os.rename("/tmp/vosk-model-small-en-us-0.15", model_path)
+    
+    model = Model(model_path)
+    
+    wf = wave.open(audio_path, "rb")
+    rec = KaldiRecognizer(model, wf.getframerate())
+    rec.SetWords(True)
+    
+    transcription = []
+    while True:
+        data = wf.readframes(4000)
+        if len(data) == 0:
+            break
+        if rec.AcceptWaveform(data):
+            result = json.loads(rec.Result())
+            transcription.append(result.get('text', ''))
+    
+    final_result = json.loads(rec.FinalResult())
+    transcription.append(final_result.get('text', ''))
+    
+    return ' '.join(transcription), 'en'
 
 @app.route('/')
 def home():
@@ -45,19 +119,22 @@ def transcribe_audio():
             file.save(temp_file.name)
             temp_path = temp_file.name
         
-        # Get model (lazy load)
-        whisper_model = get_model()
-        
         # Transcribe audio
-        result = whisper_model.transcribe(temp_path)
+        transcription, language = transcribe_with_api(temp_path)
         
         # Clean up temp file
-        os.unlink(temp_path)
+        try:
+            os.unlink(temp_path)
+            wav_path = temp_path.rsplit('.', 1)[0] + '.wav'
+            if os.path.exists(wav_path):
+                os.unlink(wav_path)
+        except:
+            pass
         
         return jsonify({
             'success': True,
-            'transcription': result['text'].strip(),
-            'language': result.get('language', 'unknown')
+            'transcription': transcription.strip(),
+            'language': language
         })
     
     except Exception as e:

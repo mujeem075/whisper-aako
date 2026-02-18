@@ -15,12 +15,23 @@ heroku create your-app-name
 # Set dyno type to Standard-2x
 heroku ps:type web=Standard-2X
 
+# Optional: Add Groq API key for better accuracy (free tier available)
+heroku config:set GROQ_API_KEY=your_groq_api_key
+
 # Deploy
 git init
 git add .
 git commit -m "Initial commit"
 git push heroku main
 ```
+
+### 2. Get Free Groq API Key (Recommended)
+1. Visit: https://console.groq.com/
+2. Sign up for free account
+3. Get API key from dashboard
+4. Add to Heroku: `heroku config:set GROQ_API_KEY=your_key`
+
+Without API key, it will use Vosk (offline, less accurate but free).
 
 ### 2. API Usage
 

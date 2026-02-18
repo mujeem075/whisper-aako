@@ -1,5 +1,5 @@
 flask==3.0.0
-openai-whisper
 gunicorn==21.2.0
 werkzeug==3.0.1
-numba==0.59.0
+vosk==0.3.45
+requests==2.31.0
