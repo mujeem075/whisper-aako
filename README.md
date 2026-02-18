@@ -61,4 +61,7 @@ print(response.json())
 ## Notes
 - Standard-2x dyno recommended for better performance
 - Timeout set to 300 seconds for large files
-- Base Whisper model used (good balance of speed and accuracy)
+- Faster-Whisper tiny model used (4-5x faster than regular Whisper!)
+- Model downloads on first request (takes ~20 seconds first time)
+- For better accuracy, change "tiny" to "base" or "small" in app.py
+- int8 quantization for faster CPU inference

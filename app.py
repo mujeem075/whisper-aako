@@ -1,5 +1,5 @@
 import os
-import whisper
+from faster_whisper import WhisperModel
 from flask import Flask, request, jsonify, render_template
 from werkzeug.utils import secure_filename
 import tempfile
@@ -9,8 +9,16 @@ app = Flask(__name__)
 # Allowed audio file extensions
 ALLOWED_EXTENSIONS = {'mp3', 'wav', 'mp4', 'm4a', 'ogg', 'flac'}
 
-# Load Whisper model (base model for Standard-2x dyno)
-model = whisper.load_model("base")
+# Model will be loaded on first request (lazy loading)
+model = None
+
+def get_model():
+    global model
+    if model is None:
+        # Using tiny model with CPU (faster-whisper is optimized for CPU)
+        # Options: tiny, base, small, medium, large-v2
+        model = WhisperModel("tiny", device="cpu", compute_type="int8")
+    return model
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -38,16 +46,22 @@ def transcribe_audio():
             file.save(temp_file.name)
             temp_path = temp_file.name
         
-        # Transcribe audio
-        result = model.transcribe(temp_path)
+        # Get model (lazy load)
+        whisper_model = get_model()
+        
+        # Transcribe audio (faster-whisper returns segments and info)
+        segments, info = whisper_model.transcribe(temp_path, beam_size=5)
+        
+        # Combine all segments into full text
+        transcription = " ".join([segment.text for segment in segments])
         
         # Clean up temp file
         os.unlink(temp_path)
         
         return jsonify({
             'success': True,
-            'transcription': result['text'],
-            'language': result.get('language', 'unknown')
+            'transcription': transcription.strip(),
+            'language': info.language
         })
     
     except Exception as e:
