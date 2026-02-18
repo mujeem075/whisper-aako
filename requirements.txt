@@ -1,5 +1,5 @@
 flask==3.0.0
-faster-whisper==1.0.3
+openai-whisper
 gunicorn==21.2.0
 werkzeug==3.0.1
-setuptools
+numba==0.59.0

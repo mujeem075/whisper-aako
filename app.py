@@ -1,5 +1,5 @@
 import os
-from faster_whisper import WhisperModel
+import whisper
 from flask import Flask, request, jsonify, render_template
 from werkzeug.utils import secure_filename
 import tempfile
@@ -15,9 +15,8 @@ model = None
 def get_model():
     global model
     if model is None:
-        # Using tiny model with CPU (faster-whisper is optimized for CPU)
-        # Options: tiny, base, small, medium, large-v2
-        model = WhisperModel("tiny", device="cpu", compute_type="int8")
+        # Using tiny model - smallest and fastest
+        model = whisper.load_model("tiny")
     return model
 
 def allowed_file(filename):
@@ -49,19 +48,16 @@ def transcribe_audio():
         # Get model (lazy load)
         whisper_model = get_model()
         
-        # Transcribe audio (faster-whisper returns segments and info)
-        segments, info = whisper_model.transcribe(temp_path, beam_size=5)
-        
-        # Combine all segments into full text
-        transcription = " ".join([segment.text for segment in segments])
+        # Transcribe audio
+        result = whisper_model.transcribe(temp_path)
         
         # Clean up temp file
         os.unlink(temp_path)
         
         return jsonify({
             'success': True,
-            'transcription': transcription.strip(),
-            'language': info.language
+            'transcription': result['text'].strip(),
+            'language': result.get('language', 'unknown')
         })
     
     except Exception as e:
